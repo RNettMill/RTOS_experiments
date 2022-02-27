@@ -64,8 +64,7 @@
 #define mainDELAY_LOOP_COUNT		( 0xffffff )
 
 /* The task functions. */
-void vTask1( void *pvParameters );
-void vTask2( void *pvParameters );
+void vPrintTask(void* pvParameters);
 uint32_t fibonacci(uint32_t num);
 void vTerribleFib(void* pvParameters);
 
@@ -74,15 +73,15 @@ void vTerribleFib(void* pvParameters);
 int main( void )
 {
 	/* Create one of the two tasks. */
-    xTaskCreate(vTask1, //pointer to function
-        "Task 1", //text name for task
+    xTaskCreate(vPrintTask, //pointer to function
+        "Print1", //text name for task
         100, //stack depth
-        NULL, //task parameter note used
-        1, //priority 1
+        "Task 1\r\n", //task parameter note used
+        2, //priority 2
         NULL); //task handle not used
 
 	/* Create the other task in exactly the same way. */
-	xTaskCreate( vTask2, "Task 2", 1000, NULL, 1, NULL );
+	xTaskCreate( vPrintTask, "Task 2", 1000, "Task 2\r\n", 2, NULL );
     xTaskCreate( vTerribleFib, "FibTask", 1000, NULL, 1, NULL);
 
 	/* Start the scheduler to start the tasks executing. */
@@ -117,45 +116,22 @@ void vTerribleFib(void* pvParameters) {
         number++;
     }
 }
-void vTask1(void* pvParameters)
+void vPrintTask(void* pvParameters)
 {
-    const char* pcTaskName = "Task 1 is running\r\n";
+    TickType_t xLastWakeTime;
+    const TickType_t xDelay1000ms = pdMS_TO_TICKS(1000UL); //timeout time
     volatile uint32_t ul; //vol ensures ul is not optimized away
+
+    char* printText = (char*)pvParameters;
+
+    xLastWakeTime = xTaskGetTickCount();
 
     for (;;)
     {
         //print name of task
-        vPrintString(pcTaskName);
+        vPrintString(printText);
 
-        //delay for a period
-        for (ul = 0; ul < mainDELAY_LOOP_COUNT; ul++)
-        {
-            //this loop is just a very crude delay
-        }
+        //block this task until 1000ms have passed
+        vTaskDelayUntil(&xLastWakeTime, xDelay1000ms); 
     }
 }
-
-/*-----------------------------------------------------------*/
-
-void vTask2( void *pvParameters )
-{
-const char *pcTaskName = "Task 2 is running\r\n";
-volatile uint32_t ul;
-
-	/* As per most tasks, this task is implemented in an infinite loop. */
-	for( ;; )
-	{
-		/* Print out the name of this task. */
-		vPrintString( pcTaskName );
-
-		/* Delay for a period. */
-		for( ul = 0; ul < mainDELAY_LOOP_COUNT; ul++ )
-		{
-			/* This loop is just a very crude delay implementation.  There is
-			nothing to do in here.  Later exercises will replace this crude
-			loop with a proper delay/sleep function. */
-		}
-	}
-}
-
-
