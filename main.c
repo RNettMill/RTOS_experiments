@@ -56,6 +56,7 @@
 /* FreeRTOS.org includes. */
 #include "FreeRTOS.h"
 #include "task.h"
+#include "queue.h"
 
 /* Demo includes. */
 #include "supporting_functions.h"
@@ -67,11 +68,33 @@
 void vPrintTask(void* pvParameters);
 uint32_t fibonacci(uint32_t num);
 void vTerribleFib(void* pvParameters);
+void vQueueSender(void* pvParameters);
+void vQueueReceiver(void* pvParameters);
+
+//queues to use
+QueueHandle_t xNumQueue;
+
+//fake data for queues
+typedef enum {
+data0 = 100,
+data1 = 200
+} Fake_data_t;
+
+//data struct format
+typedef struct
+{
+    uint8_t ucValue;
+    Fake_data_t eDataSource;
+} Data_t;
+
+uint32_t numberParameters[] = { 0, 1 };
 
 /*-----------------------------------------------------------*/
 
 int main( void )
 {
+    xNumQueue = xQueueCreate(5, sizeof(uint32_t));
+
 	/* Create one of the two tasks. */
     xTaskCreate(vPrintTask, //pointer to function
         "Print1", //text name for task
@@ -83,6 +106,11 @@ int main( void )
 	/* Create the other task in exactly the same way. */
 	xTaskCreate( vPrintTask, "Task 2", 1000, "Task 2\r\n", 2, NULL );
     xTaskCreate( vTerribleFib, "FibTask", 1000, NULL, 1, NULL);
+
+    //create two tasks to feed the queue and one to read from it
+    xTaskCreate(vQueueSender, "Queue0", 100, numberParameters[0], 2, NULL);
+    xTaskCreate(vQueueSender, "Queue1", 100, numberParameters[1], 2, NULL);
+    xTaskCreate(vQueueReceiver, "Rec1", 100, NULL, 3, NULL);
 
 	/* Start the scheduler to start the tasks executing. */
 	vTaskStartScheduler();	
@@ -112,7 +140,7 @@ void vTerribleFib(void* pvParameters) {
     for (;;) {
         uint32_t nextNum = fibonacci(number);
         vPrintStringAndNumber("next fib: ", nextNum);
-        vPrintStringAndNumber("maxStack: ", uxTaskGetStackHighWaterMark(NULL));
+        //vPrintStringAndNumber("maxStack: ", uxTaskGetStackHighWaterMark(NULL));
         number++;
     }
 }
@@ -133,5 +161,74 @@ void vPrintTask(void* pvParameters)
 
         //block this task until 1000ms have passed
         vTaskDelayUntil(&xLastWakeTime, xDelay1000ms); 
+    }
+}
+
+void vQueueSender(void* pvParameters)
+{
+    TickType_t xLastWakeTime;
+    BaseType_t xQueueStatus;
+    const TickType_t xDelay1000ms = pdMS_TO_TICKS(2000UL); //timeout time
+    //how long to wait for queue to empty
+    const TickType_t xQueueWaitTicks = pdMS_TO_TICKS(100); 
+    volatile uint32_t ul; //vol ensures ul is not optimized away
+
+    uint32_t lDataNum = (uint32_t)pvParameters;
+    //uint32_t lDataNum = 1;
+
+    xLastWakeTime = xTaskGetTickCount();
+
+    for (;;)
+    {
+        //slap the data into the queue
+        /*Data_t data2Send;
+        data2Send.eDataSource = (int)pvParameters;
+        data2Send.ucValue = Fake_Data_t*/
+        xQueueStatus = xQueueSendToBack(xNumQueue, &lDataNum, xQueueWaitTicks);
+        if (xQueueStatus != pdPASS)
+        {
+            /* The send operation could not complete, even after waiting for 100ms.
+            This must be an error as the receiving task should make space in the
+            queue as soon as both sending tasks are in the Blocked state. */
+            vPrintString("Could not send to the queue.\r\n");
+        }
+        
+
+        //block this task until 1000ms have passed
+        vTaskDelayUntil(&xLastWakeTime, xDelay1000ms);
+    }
+}
+
+void vQueueReceiver(void* pvParameters) {
+    //how long to wait for queue to empty
+    const TickType_t xQueueWaitTicks = pdMS_TO_TICKS(3000);
+    BaseType_t xQueueStatus;
+    uint32_t lReceivedValue;
+
+    for (;;)
+    {
+        if (uxQueueMessagesWaiting(xNumQueue) != 0) {
+            vPrintString("queue should be empty but isn't");
+        }
+
+
+        xQueueStatus = xQueueReceive(xNumQueue, &lReceivedValue, xQueueWaitTicks);
+        if (xQueueStatus == pdPASS)
+        {
+            /* Data was successfully received from the queue, print out the received
+            value and the source of the value. */
+            if (lReceivedValue == 0)
+            {
+                vPrintString("From Sender 0\r\n");
+            }
+            else
+            {
+                vPrintString("From Sender 1\r\n");
+            }
+        }
+        else
+        {
+            vPrintString("couldn't receive\r\n");
+        }
     }
 }
