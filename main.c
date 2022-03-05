@@ -57,6 +57,7 @@
 #include "FreeRTOS.h"
 #include "task.h"
 #include "queue.h"
+#include "timers.h"
 
 /* Demo includes. */
 #include "supporting_functions.h"
@@ -70,9 +71,13 @@ uint32_t fibonacci(uint32_t num);
 void vTerribleFib(void* pvParameters);
 void vQueueSender(void* pvParameters);
 void vQueueReceiver(void* pvParameters);
+void vTimerFunction(void);
 
 //queues to use
 QueueHandle_t xNumQueue;
+
+//timers
+TimerHandle_t xSimpleTimer;
 
 //fake data for queues
 typedef enum {
@@ -107,6 +112,15 @@ int main( void )
 	xTaskCreate( vPrintTask, "Task 2", 1000, "Task 2\r\n", 2, NULL );
     xTaskCreate( vTerribleFib, "FibTask", 1000, NULL, 1, NULL);
 
+    //create a timer
+    const char* timerName = "simpTime";
+    const TickType_t xDelay100ms = pdMS_TO_TICKS(10UL); //timeout time
+    xSimpleTimer = xTimerCreate(timerName, //timer name
+        xDelay100ms, //period
+        pdFALSE, //auto reload 
+        0, //timer id
+        vTimerFunction); //timer callback function
+
     //create two tasks to feed the queue and one to read from it
     xTaskCreate(vQueueSender, "Queue0", 100, numberParameters[0], 2, NULL);
     xTaskCreate(vQueueSender, "Queue1", 100, numberParameters[1], 2, NULL);
@@ -123,6 +137,10 @@ int main( void )
 	return 0;
 }
 /*-----------------------------------------------------------*/
+
+void vTimerFunction(void) {
+    vPrintString("timer \r\n");
+}
 
 uint32_t fibonacci(uint32_t num) {
     if (num < 2) return num;
@@ -158,6 +176,9 @@ void vPrintTask(void* pvParameters)
     {
         //print name of task
         vPrintString(printText);
+
+        //one of the tasks should start a timer
+        if (printText[5] == '1') xTimerStart(xSimpleTimer, 0);
 
         //block this task until 1000ms have passed
         vTaskDelayUntil(&xLastWakeTime, xDelay1000ms); 
