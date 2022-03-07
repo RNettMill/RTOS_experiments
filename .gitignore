@@ -32,3 +32,6 @@ MSVC/Example001.vcxproj.filters
 MSVC/Example001.vcxproj.user
 MSVC/RTOSexperiments.vcxproj
 MSVC/RTOSexperiments.vcxproj.user
+MSVC/.vs/RTOSexperiments/v17/.suo
+MSVC/.vs/RTOSexperiments/v17/Browse.VC.db
+MSVC/Debug/event_groups.obj

@@ -53,17 +53,26 @@
     1 tab == 4 spaces!
 */
 
+#include <time.h>
+
 /* FreeRTOS.org includes. */
 #include "FreeRTOS.h"
 #include "task.h"
 #include "queue.h"
 #include "timers.h"
+#include "event_groups.h"
 
 /* Demo includes. */
 #include "supporting_functions.h"
 
 /* Used as a loop counter to create a very crude delay. */
 #define mainDELAY_LOOP_COUNT		( 0xffffff )
+
+//define sync bits for the syncing tasks
+#define syncBit0 1UL
+#define syncBit1 (1UL<<1)
+#define syncBit2 (1UL<<2)
+
 
 /* The task functions. */
 void vPrintTask(void* pvParameters);
@@ -72,12 +81,24 @@ void vTerribleFib(void* pvParameters);
 void vQueueSender(void* pvParameters);
 void vQueueReceiver(void* pvParameters);
 void vTimerFunction(void);
+static void vSynchTask(void* pvParameters);
+
+//event grouping bitfields
+EventGroupHandle_t xEventGroup;
+
+/* Pseudo random number generation functions - implemented in this file as the
+MSVC rand() function has unexpected consequences. */
+static uint32_t prvRand(void);
+static void prvSRand(uint32_t ulSeed);
 
 //queues to use
 QueueHandle_t xNumQueue;
 
 //timers
 TimerHandle_t xSimpleTimer;
+
+/* Use by the pseudo random number generator. */
+static uint32_t ulNextRand;
 
 //fake data for queues
 typedef enum {
@@ -126,6 +147,12 @@ int main( void )
     xTaskCreate(vQueueSender, "Queue1", 100, numberParameters[1], 2, NULL);
     xTaskCreate(vQueueReceiver, "Rec1", 100, NULL, 3, NULL);
 
+    //create the syncing events and their event bits
+    xEventGroup = xEventGroupCreate();
+    xTaskCreate(vSynchTask, "Sync0", 100, syncBit0, 4, NULL);
+    xTaskCreate(vSynchTask, "Sync1", 100, syncBit1, 4, NULL);
+    xTaskCreate(vSynchTask, "Sync2", 100, syncBit2, 4, NULL);
+
 	/* Start the scheduler to start the tasks executing. */
 	vTaskStartScheduler();	
 
@@ -157,7 +184,7 @@ void vTerribleFib(void* pvParameters) {
     uint32_t number = 0;
     for (;;) {
         uint32_t nextNum = fibonacci(number);
-        vPrintStringAndNumber("next fib: ", nextNum);
+        vPrintStringAndNumber("fib: ", nextNum);
         //vPrintStringAndNumber("maxStack: ", uxTaskGetStackHighWaterMark(NULL));
         number++;
     }
@@ -253,3 +280,57 @@ void vQueueReceiver(void* pvParameters) {
         }
     }
 }
+
+static void vSynchTask(void* pvParameters) {
+    const TickType_t xMaxDelay = pdMS_TO_TICKS(5000UL);
+    const TickType_t xMinDelay = pdMS_TO_TICKS(200UL);
+    TickType_t xDelayTime;
+    EventBits_t uxThisTaskSyncBit;
+    const EventBits_t uxAllSyncBits =  syncBit0 | syncBit1 | syncBit2;
+
+    uxThisTaskSyncBit = (EventBits_t)pvParameters;
+
+    for (;;) {
+        //create a fake timeout to simulate asynchronous stuff
+        xDelayTime = (prvRand() % xMaxDelay) + xMinDelay;
+        vTaskDelay(xDelayTime);
+
+        //sync point is here
+        vPrintTwoStrings(pcTaskGetTaskName(NULL), "synching");
+
+        //this will block until all event bits are set
+        xEventGroupSync(xEventGroup, uxThisTaskSyncBit, uxAllSyncBits, portMAX_DELAY);
+
+        vPrintTwoStrings(pcTaskGetTaskName(NULL), "synched");
+
+    }
+
+
+}
+
+static uint32_t prvRand(void)
+{
+    const uint32_t ulMultiplier = 0x015a4e35UL, ulIncrement = 1UL;
+    uint32_t ulReturn;
+
+    /* Utility function to generate a pseudo random number as the MSVC rand()
+    function has unexpected consequences. */
+    taskENTER_CRITICAL();
+    ulNextRand = (ulMultiplier * ulNextRand) + ulIncrement;
+    ulReturn = (ulNextRand >> 16UL) & 0x7fffUL;
+    taskEXIT_CRITICAL();
+    return ulReturn;
+}
+/*-----------------------------------------------------------*/
+
+static void prvSRand(uint32_t ulSeed)
+{
+    /* Utility function to seed the pseudo random number generator. */
+    ulNextRand = ulSeed;
+}
+/*-----------------------------------------------------------*/
+
+
+
+
+
